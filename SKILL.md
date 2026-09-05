@@ -1,6 +1,6 @@
 ---
 name: sliced-review
-version: 2.3.0
+version: 2.3.1
 description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`; append `report` to build the Markdown + HTML review report without being asked (otherwise the skill asks once at the end). `fix only` / `fix only 5` / `fix only high` skip the review and run the fix pipeline on the open findings a previous run already recorded in findings.json. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
 ---
 
@@ -682,7 +682,11 @@ Only for `fix`, `fix 5` and `fix high`. In the report-only modes, Step 10 ends t
   reviewer. The session model's approval in step 7 is an **integration gate and a human-facing
   decision, not an independent review**. Say so rather than presenting it as a third opinion.
 - **GLM Flash and Composer** (in `fix 5`) are independent of all three core models, so they may
-  check any of them.
+  check any of them. **But Grok and Composer never check each other.** Both bill to Cursor, and a
+  fix and its cross-check must sit on different subscriptions — otherwise one bill hides the other
+  and the two "independent" opinions came out of the same quota pool. So the five-ring has a fixed
+  order: **Sol → Opus → Grok → GLM Flash → Composer → Sol** (each model's fix is checked by the next).
+  No two Cursor models are adjacent, and Opus is still checked by Grok, never by Claude.
 
 **What still stops the pipeline.** `fix` is the user's standing authorisation to apply the fixes their
 triage approves — it is NOT authorisation to act on anything. Stop and ask when a fix would delete
@@ -720,7 +724,8 @@ already triaged.
 
 A model MAY fix findings from a slice it reviewed itself — writing a fix is not reviewing it. What
 it may never do is **check its own fix**; the rotated cross-check in 11g step 5 still applies in
-full, and Opus's fixes still route to Sol or Grok, never to another Claude subagent.
+full, and Opus's fixes still route to Sol or Grok, never to another Claude subagent. A Composer fix is
+never checked by Grok and a Grok fix never by Composer — same Cursor bill (11g ring order).
 
 #### The two things that break this if you skip them
 

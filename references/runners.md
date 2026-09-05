@@ -113,6 +113,8 @@ review note, so a reader a month later can tell what actually ran.
   Cursor arm. Duration and output size are the only comparable signals. Say so rather than
   implying a budget is being managed.
 - **Grok and Composer share ONE quota pool** — never run two Cursor arms concurrently.
+- **Grok and Composer never cross-check each other's fixes.** Same subscription, so a fix and its
+  check would be on one bill. Five-model ring: Sol → Opus → Grok → GLM Flash → Composer → Sol.
 - Grok: use **`-high`, not `-xhigh`**. Measured on 5 slices: xhigh returned 7 findings and zero
   HIGHs against high's 14 and 3, and took 26% longer.
 - Composer 2.5 is the fastest reviewer in the stack (~2m/slice) and finds nearly as much, but rates

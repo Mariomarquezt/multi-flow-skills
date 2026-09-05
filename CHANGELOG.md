@@ -3,6 +3,12 @@
 The version lives in `SKILL.md` frontmatter (`version:`) and as a git tag. Compare yours with
 `grep ^version ~/.claude/skills/sliced-review/SKILL.md` to see if you are behind.
 
+## 2.3.1 — 2026-09-04
+
+- Fixed five-model cross-check ring: Sol → Opus → Grok → GLM Flash → Composer → Sol. Grok and
+  Composer never check each other — both bill to Cursor, and a fix and its check must be on
+  different subscriptions. Same rule stated for the `fix fast` modes and in `runners.md`.
+
 ## 2.3.0 — 2026-09-04
 
 - **`fix only` mode** (§11i): fix a review that already ran without re-running it. Skips
