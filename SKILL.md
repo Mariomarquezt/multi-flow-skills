@@ -1,7 +1,7 @@
 ---
 name: sliced-review
-version: 2.0.1
-description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
+version: 2.1.0
+description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
 ---
 
 # Sliced Review
@@ -455,6 +455,44 @@ Then fix in waves matching the tiers, and record what was fixed where the projec
 things (`docs/STATUS.md`, changelog, prodgate evidence) — **and in `docs/reviews/findings.json`
 (Step 12), which is the one place the board and Mission Control read.**
 
+### The model scorecard — every multi-model run ends Step 10 with one
+
+Triage produces the one thing raw reports cannot: which claims were TRUE. Use it. Before moving to
+fixes, write **`docs/reviews/scorecard-<YYYY-MM-DD>.md`** from `templates/scorecard.md` and put the
+table in the report to the user. One row per reviewing model:
+
+| column | meaning |
+|---|---|
+| reported | findings the model wrote, after de-duplicating within its own reports |
+| verified / refuted | survived Step 10 (and 11b if it ran) / disproved against the code |
+| precision | verified ÷ reported |
+| crit · high · med · low | **verified** findings by severity — never the model's own labels on unverified claims |
+| unique | verified findings no other model reported |
+| missed crit/high | verified critical or high findings that other models reported and this one did not |
+| score | Σ weights over verified findings: critical 8, high 4, medium 2, low 1, info 0 |
+| wall clock · cost | from the ledger, so the score has a price next to it |
+
+**Rank by score.** Ties break by unique, then precision. Under the table, one sentence per model on
+why it ranks where it does, then a line for anything **every** model missed that triage found by
+hand or from the live database — that line is the honest ceiling of the whole stack.
+
+Rules that keep the table from lying:
+
+- **Grade on verified findings only.** A model with 20 claims and 15 refutations ranks below one with
+  5 claims all true. Raw count rewards wandering and confident noise.
+- **Severity is the triager's, not the model's.** A model calling a nit "critical" does not make it
+  one; re-grade before counting.
+- **Same defect from two models is one finding**, credited to both. It counts toward neither's
+  `unique`.
+- **A lane that died or was killed gets a row with its coverage stated**, not a zero that reads as
+  "found nothing".
+- In `fast` mode (one reviewer) write the table anyway — one row, no rank — so the run is
+  comparable to the next.
+
+The scorecard is what decides which models the next run buys. Over time it is also the evidence
+behind the roster in Step 1, so keep the formula fixed; a run graded on a different formula cannot be
+compared to this one.
+
 ---
 
 ## Step 11 — Independent reviewers, then cross-reviewed fixes
@@ -753,3 +791,5 @@ session that fixes a finding and leaves the file alone leaves the board reportin
   disagreement and hand the decision to the user.
 - Never mark a finding `verified: true` or `fixed` in `findings.json` on a model's say-so. Verified
   means a person or a test saw it; fixed means a commit sha.
+- Never rank models on raw finding counts or on their own severity labels. The scorecard grades
+  verified findings at the triager's severity, or it is not a scorecard.

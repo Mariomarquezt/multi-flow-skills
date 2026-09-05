@@ -3,6 +3,17 @@
 The version lives in `SKILL.md` frontmatter (`version:`) and as a git tag. Compare yours with
 `grep ^version ~/.claude/skills/sliced-review/SKILL.md` to see if you are behind.
 
+## 2.1.0 — 2026-09-04
+
+- **Model scorecard.** Every multi-model run now ends Step 10 by writing
+  `docs/reviews/scorecard-<date>.md` (template in `templates/scorecard.md`): one row per model
+  with reported / verified / refuted counts, precision, verified findings by severity
+  (critical · high · medium · low), unique finds, missed critical/high, a weighted score
+  (8 · 4 · 2 · 1) and the ledger's wall clock and cost. Models are ranked by score; ties break by
+  unique finds, then precision. Grades use findings that survived triage at the triager's
+  severity, never raw claims or the model's own labels.
+- New honesty rule: never rank models on raw counts or self-reported severity.
+
 ## 2.0.1 — 2026-09-04
 
 (2.0.0 was published for a few minutes the same day and withdrawn; 2.0.1 is the release.)
