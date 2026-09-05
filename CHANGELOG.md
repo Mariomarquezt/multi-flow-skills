@@ -3,6 +3,11 @@
 The version lives in `SKILL.md` frontmatter (`version:`) and as a git tag. Compare yours with
 `grep ^version ~/.claude/skills/sliced-review/SKILL.md` to see if you are behind.
 
+## 2.1.1 — 2026-09-04
+
+- Scorecard: time is explicit per model — total time, average per slice, slowest slice (with its
+  id), all from `ledger.tsv`. Time is shown beside the score but never changes the rank.
+
 ## 2.1.0 — 2026-09-04
 
 - **Model scorecard.** Every multi-model run now ends Step 10 by writing

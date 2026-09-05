@@ -1,6 +1,6 @@
 ---
 name: sliced-review
-version: 2.1.0
+version: 2.1.1
 description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
 ---
 
@@ -470,9 +470,12 @@ table in the report to the user. One row per reviewing model:
 | unique | verified findings no other model reported |
 | missed crit/high | verified critical or high findings that other models reported and this one did not |
 | score | Σ weights over verified findings: critical 8, high 4, medium 2, low 1, info 0 |
-| wall clock · cost | from the ledger, so the score has a price next to it |
+| total time · avg / slice · slowest slice | from `ledger.tsv`: the sum of that model's slice wall clocks, the mean, and its longest single slice with the slice id. Per-model queue time, not the run's wall clock — lanes run in parallel |
+| cost | from the ledger, so the score has a price next to it |
 
-**Rank by score.** Ties break by unique, then precision. Under the table, one sentence per model on
+**Rank by score.** Ties break by unique, then precision. Time never enters the rank — but it sits
+in the same row so a model that scored second in a third of the time is visible as the bargain it
+is. Under the table, one sentence per model on
 why it ranks where it does, then a line for anything **every** model missed that triage found by
 hand or from the live database — that line is the honest ceiling of the whole stack.
 

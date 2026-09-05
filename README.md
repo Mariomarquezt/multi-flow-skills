@@ -1,6 +1,6 @@
 # sliced-review
 
-**Version 2.1.0** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
+**Version 2.1.1** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
 
 A Claude Code skill that reviews a whole codebase with a second model **without the budget being spent on the model wandering around the repository**.
 
