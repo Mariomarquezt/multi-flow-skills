@@ -1,7 +1,7 @@
 ---
 name: sliced-review
-version: 2.2.0
-description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`; append `report` to build the Markdown + HTML review report without being asked (otherwise the skill asks once at the end). Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
+version: 2.3.0
+description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`; append `report` to build the Markdown + HTML review report without being asked (otherwise the skill asks once at the end). `fix only` / `fix only 5` / `fix only high` skip the review and run the fix pipeline on the open findings a previous run already recorded in findings.json. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
 ---
 
 # Sliced Review
@@ -43,6 +43,8 @@ before Step 1, so a misparse is caught before any budget is spent.
 | `/sliced-review fix fast 3` | core three, review **and** fix concurrently | yes — pipelined |
 | `/sliced-review fix fast 5` | all five, review **and** fix concurrently | yes — pipelined |
 | `… report` (suffix) | any of the above | — and builds the Markdown + HTML report (12b) without asking |
+| `/sliced-review fix only` | core three as **fixers** — no review | yes — fixes the `open` findings already in `findings.json` (11i) |
+| `/sliced-review fix only 5` / `fix only high` | five fixers / CRITICAL+HIGH only | yes — same, no review |
 
 **The CORE THREE** (the default — the independent, highest-signal set):
 
@@ -72,6 +74,10 @@ Combinations compose in any order: `fix 3`, `fix 5`, `fix high`, `fix fast 5`, `
 
 `report` is a suffix like `no wrap`: it pre-answers the question Step 12b would otherwise ask, so
 the Markdown + HTML report is built at the end without a prompt.
+
+`fix only` is the second half on its own: when a report-only run already recorded findings and the
+user later says "now fix them", it skips the review entirely, re-verifies the open findings against
+the current tree, and runs the 11g pipeline. See 11i. Never re-review to fix.
 
 ### Always finish with `/wrap lite`
 
@@ -749,6 +755,46 @@ model still tries to disprove each finding first (11b). `fix fast high` filters 
 way. The settled-tree pass (11f) still runs on the whole tree at the end, and there is still exactly
 **one commit**, after it passes. Destructive, interface-changing, credential/billing and disputed
 fixes still stop and ask.
+
+### 11i. `fix only` — fix a review that already ran, without re-running it
+
+A report-only run ends at Step 10 with the findings recorded and nothing fixed. The next session
+should not have to re-explain the pipeline, and must not pay for the review a second time.
+`fix only` is that entry point: **Steps 1–9 and 11a are skipped**, and the work starts from what the
+earlier run recorded.
+
+**Input.** `docs/reviews/findings.json` — every entry with `status: open`, plus the per-slice reports
+in each `reviews[].dir` for the detail the one-line `title` lacks. If the file is missing, look for
+the most recent review folder's `out/*.md`; if that is missing too, stop: *"No recorded review to
+fix — run `/sliced-review` first."* Never fall back to reviewing.
+
+**State the resolved mode back first**, as always, but with the inventory: *"fix only — 14 open
+findings from sol-2026-09-02, grok-2026-09-02 and opus-2026-09-02 (3 critical, 6 high, 5 medium);
+23 commits on main since the review."*
+
+**Then the pipeline is 11g from step 2:**
+
+1. **Triage again, against the CURRENT tree.** The code has moved since the review. For every open
+   finding, re-read the file at the recorded `path:LINE` and its neighbourhood. Three outcomes, all
+   recorded in `findings.json` before any fixer is briefed: still real → stays `open` and enters the
+   queue; already gone → `fixed` with the commit that closed it (`git log -S` finds it) or
+   `false-positive` with a note if it never was real; cannot be found because the file moved → fix
+   the `file` field, then decide. In `fix only high`, everything below HIGH stays `open` and is not
+   queued.
+2. **Split by file** (11c), **fix** with the mode's model set (core three by default, five with
+   `fix only 5`), **rotate the cross-check** (11d, nobody checks their own work), **settled-tree
+   pass** (11f), **session model approves and commits** — one commit — then Step 12 records
+   `fixed_at` and `fix_commit`.
+3. **Do not rebuild the scorecard.** It grades the review, and no review ran. Re-run the report
+   (12b) so the status column matches the commits, if `report` was given or the user says yes.
+
+**The same stops apply** (11g "what still stops the pipeline"): data deletion or migration, public
+interface changes, credentials or billing, model disagreement about whether the defect is real. A
+finding that was `open` for two weeks is not more trusted for having aged.
+
+Composes like everything else: `fix only 5`, `fix only high`, `fix only 3 report`,
+`fix only high no wrap`. `fix only` is barriered, never pipelined — there is nothing to pipeline
+against.
 
 ---
 

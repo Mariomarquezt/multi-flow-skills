@@ -1,6 +1,6 @@
 # sliced-review
 
-**Version 2.2.0** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
+**Version 2.3.0** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
 
 A Claude Code skill that reviews a whole codebase with a second model **without the budget being spent on the model wandering around the repository**.
 
@@ -43,6 +43,7 @@ Then in Claude Code: "review the whole codebase with GLM" / "audit this project 
 | `/sliced-review fast` | Composer 2.5 alone | no |
 | `/sliced-review fix` / `fix 3` / `fix 5` / `fix high` | as above | yes — triage, fix, cross-check with a different model, commit |
 | `/sliced-review fix fast` / `fix fast 3` / `fix fast 5` | as above | yes, pipelined per slice |
+| `/sliced-review fix only` / `fix only 5` / `fix only high` | fixers only, **no new review** | yes — re-verifies the open findings a previous run recorded in `findings.json`, then fixes them |
 
 Append `no wrap` to skip the closing wrap-up. Append `report` to build the Markdown + HTML review report without being asked; otherwise the skill asks once at the end. The models are the author's measured stack; swap in whatever your `runner.env` can reach.
 

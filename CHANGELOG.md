@@ -3,6 +3,14 @@
 The version lives in `SKILL.md` frontmatter (`version:`) and as a git tag. Compare yours with
 `grep ^version ~/.claude/skills/sliced-review/SKILL.md` to see if you are behind.
 
+## 2.3.0 — 2026-09-04
+
+- **`fix only` mode** (§11i): fix a review that already ran without re-running it. Skips
+  Steps 1–9 and 11a, takes the `open` findings from `findings.json`, re-verifies each against the
+  current tree (closing what a later commit already fixed), then runs the 11g pipeline — split by
+  file, fix, rotated cross-check, settled-tree pass, one commit. Variants `fix only 5`,
+  `fix only high`; composes with `report` and `no wrap`. Scorecard is not rebuilt.
+
 ## 2.2.0 — 2026-09-04
 
 - **Review report, Markdown + HTML.** `templates/build-report.py` (stdlib only) renders
