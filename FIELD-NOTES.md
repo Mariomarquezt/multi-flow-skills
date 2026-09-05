@@ -4,7 +4,7 @@ Measured, not reasoned. Update this file when a run teaches something new.
 
 ## 2026-08-16 — three parallel whole-repo lanes returned zero findings
 
-**Target:** an agency SaaS (private repo). **38,415 lines** of non-test source
+**Target:** a digital-asset-management web app (private repo). **38,415 lines** of non-test source
 (`src` 34,322 + `worker` 4,093). **Reviewer:** GLM 5.3 on a z.ai **LITE** plan.
 
 Three review lanes — security, correctness, quality — each told to *"review the whole
@@ -36,7 +36,8 @@ directory tree to explore), capped at ~2,100 lines, ordered by blast radius so t
 out of budget partway still covered every defect class that damages a customer. Runner
 enforced one slice at a time with a quota guard and a cost ledger.
 
-Kit: that project's `docs/glm-review/` (private). Reasoning written up in its `docs/STATUS.md`.
+Kit: the project's `docs/glm-review/` folder (three commits, private repo).
+Reasoning written up in that repo's `docs/STATUS.md`.
 
 ## 2026-08-16 — five of twenty-nine file paths were wrong on the first pass
 
@@ -145,9 +146,9 @@ estimate here was wrong by more than an order of magnitude, in the *generous* di
 ### Quality, for the record
 
 That slice produced 4 findings on code that had already been through a Codex audit (3
-rounds), a GLM whole-repo review (2 rounds) and a Kimi K3 review. Its best finding — an ORM
-delete hook that hard-deletes child rows with no force-delete guard, so a soft-deleted parent
-row can never be restored intact — was missed by all of them. It also
+rounds), a GLM whole-repo review (2 rounds) and a Kimi K3 review. Its best finding — an
+Account `deleting` hook that hard-deletes children with no `isForceDeleting()` guard, so a
+soft-deleted client account can never be restored intact — was missed by all of them. It also
 stated plainly, four times, what it could **not** verify from within the slice. That
 self-limiting is a direct product of the "say plainly if you could not verify" rule in
 `_context.md`.
@@ -228,7 +229,7 @@ ordinary-looking crash a tired reader waves through.
 
 Verified both directions on stubs: a run writing steadily for 24s survived a 6s idle cap; a run that
 printed a banner then slept was killed at 10s, with zero orphaned children. The first pass at this
-was a plain wall-clock cap that would have killed a legitimately slow slice — Mario caught that in
+was a plain wall-clock cap that would have killed a legitimately slow slice — the author caught that in
 review before it shipped.
 
 **The omission was in a hand-written driver loop, not in `chain.sh`.** Ad-hoc loops written to
@@ -311,11 +312,101 @@ history. Grepping the prior-audit file confirmed none of those three appear anyw
 (Specifics withheld here until fixed.)
 
 **Correction, same session:** the review's other hand-verified HIGH — an authentication
-weakness on one HTTP route — WAS already on the board, under `owasp-a02`, described in more
-detail than the review gave it. It was reported to the user as new before the
+weakness on one HTTP route — WAS already on the board, under `owasp-a02`,
+described in more detail than the review gave it. It was reported to the user as new before the
 prodgate file was grepped. The lesson is procedural and belongs in the skill: Step 7 says to
 fold prior findings into the briefs as a "do not re-report" list, and a `.prodgate.yml` (or any
 machine-readable prior audit) is exactly that input. Here the STATUS.md open-todos were folded
 in and the 28KB of prodgate `evidence:` prose was not — so one slice spent budget rediscovering
 a known finding, and the write-up overclaimed novelty until the file was checked. **Grep the
 prior-audit artifact for each finding before calling it new.**
+
+## 2026-08-22 — four reviewers on one slice set, and two backends that look like they hang
+
+**Target:** a client's production-scheduling app (private repo). **42,066 lines**
+of non-test source in **28 slices** (mean 1,502). **Reviewers: four** — Codex `gpt-5.6-sol` at xhigh,
+Cursor `cursor-grok-4.6-high` (non-fast), GLM 5.3 on z.ai LITE, and Claude Opus 5 as a subagent per
+slice. That is **112 review runs** for 28 slices.
+
+### GLM and Cursor BUFFER their entire output. The idle watchdog would have killed healthy runs.
+
+The skill already documents this as an "honest limit" of idle detection. It is not hypothetical — **two
+of the four backends wired here do it**, and both were configured with the 600s default before anyone
+noticed:
+
+- `glm-run.sh` ends in `claude -p …`, a non-streaming headless run. It prints its banner to stderr and
+  then nothing until the answer arrives.
+- `cursor-run.sh` collects the run into a temp file (`"$CA_BIN" … >"$OUT"`) and prints only after it
+  exits, because it asks for `--output-format json` in order to meter tokens.
+
+Both lanes now run `SLICE_IDLE_TIMEOUT=0` on the hard cap alone. **Read the wrapper before trusting
+idle detection** — grep it for `>"$OUT"`, `--output-format json`, or a non-streaming `-p` invocation.
+
+### Codex at xhigh goes quiet for over ten minutes inside one reasoning block
+
+Codex *does* stream, so idle detection is meaningful for it — but at `model_reasoning_effort=xhigh` a
+slice sat at a flat 50KB for **more than ten minutes** and was still alive and working. The 600s
+default would have killed it. Raised that lane to 900s; its longest legitimate slice then took
+**14m40s**. If you run Codex at xhigh, 600s is too tight.
+
+### A broken relative path in the brief halved the most expensive lane's yield
+
+Every generated brief opened with "read `../_context.md` first". The runner already prepends that file
+to the prompt, so the rules were present — but the path resolves against the **backend's** working
+directory, which is the repo root, where `../_context.md` is one level above the project.
+
+Codex went looking for it, failed, and said so in its report. Same slice, same code, only that line
+changed:
+
+| | broken path | fixed |
+|---|---|---|
+| findings | 3 (2 HIGH, 1 MEDIUM) | 6 (2 CRITICAL, 2 HIGH, 2 MEDIUM) |
+| wall clock | 7m58s | 9m40s |
+| unique findings | none | one no other lane found |
+
+**Generate briefs with an absolute path, and say the rules are already inline.** A prompt defect that
+looks cosmetic cost half the yield of the most expensive lane.
+
+### Codex self-selects an unrelated skill
+
+Sol loaded a git-diff `code-review` skill from `~/.agents/skills/` and read 240 lines of it before
+starting a whole-file audit that has an explicit brief. Tell the Codex lane not to load a skill.
+
+### What four lanes bought, concretely
+
+The single worst finding needed three facts from three places: one from the repo (a database trigger
+that guards one state transition on the wrong condition) and two from the live database (how a
+permission helper resolves, and which built-in role satisfies it). (Specifics withheld until fixed.) **No lane could assemble it alone**, and it was Grok that read the trigger
+while the database facts came from direct queries.
+
+Also measured: **Sol never reported the finding that the other three all flagged as critical** — a
+login path missing an allow-list check — on either of its two runs. It is defensible under
+"report only what you can point at" (the provider setting is not in the repo), and it is also how a
+single-reviewer setup on the strongest security model would have missed the most serious item in the
+first slice.
+
+Conversely Opus was the most productive lane and the only one that consistently **disproved its own
+candidates before reporting** and named the exact artifact needed for anything it could not settle.
+Four of the review's refutations came from Opus killing its own finding. That habit is worth
+prompting for explicitly.
+
+### Cost, GLM 5.3 on LITE, 42k lines
+
+Roughly **1.25% of the 5-hour window per slice** on the ~1,000-line tier-1/2 slices, rising to
+**~2%** on the ~2,000-line tier-4 slices. At 25 of 28 slices: **40% of the 5-hour window, 8% of the
+weekly.** Consistent with the 2026-08-20 language-learning-app entry, and it confirms the earlier finding that
+per-slice cost is dominated by a fixed per-run cost rather than tracking lines — but only loosely:
+doubling the slice size did move it, by about 60%.
+
+Zero 429s, zero watchdog kills, zero quota blocks across the whole run.
+
+### Verifying findings against the live database changed the answer, repeatedly
+
+The shared context told all four lanes that RLS was unprovable because ~33 tables have no DDL in the
+repo. That was true of the repo and false of the database. Reading the live schema **refuted six
+model findings outright** (a partial unique index made a whole "retry double-posts" family
+impossible; CHECK constraints killed three others) and **sharpened several more**.
+
+The general lesson for this skill: when the target has a reachable database, the context should say so
+and the triage step should query it. A slice brief that says "treat RLS as unknown" produces reviewers
+who correctly report what they cannot verify — and then somebody has to go and verify it anyway.

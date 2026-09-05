@@ -1,6 +1,7 @@
 ---
 name: sliced-review
-description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
+version: 2.0.1
+description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
 ---
 
 # Sliced Review
@@ -23,6 +24,61 @@ repo-wide grep"* costs a fraction and returns findings.
 This holds on a generous plan too — it just shows up as a slower, vaguer review instead of a failed
 one. Everything below follows from that single fact.
 
+## Modes — parse the invocation FIRST
+
+The mode changes the model set, whether fixes are applied, and what gets fixed. Read the
+invocation before anything else and **state the resolved mode back to the user in one line**
+before Step 1, so a misparse is caught before any budget is spent.
+
+| invocation | models | fixes? |
+|---|---|---|
+| `/sliced-review` | **the CORE THREE** | no — report only |
+| `/sliced-review 5` | **all five** | no — report only |
+| `/sliced-review fast` | **Composer 2.5 only** | no — report only |
+| `/sliced-review fix` | core three | yes, all approved severities |
+| `/sliced-review fix 3` | core three — explicit alias for `fix` | yes, all approved severities |
+| `/sliced-review fix 5` | all five | yes, all approved severities |
+| `/sliced-review fix high` | core three | yes, **CRITICAL and HIGH only** |
+| `/sliced-review fix fast` | **2× Composer review**, others fix | yes — **pipelined, fix starts per slice** |
+| `/sliced-review fix fast 3` | core three, review **and** fix concurrently | yes — pipelined |
+| `/sliced-review fix fast 5` | all five, review **and** fix concurrently | yes — pipelined |
+
+**The CORE THREE** (the default — the independent, highest-signal set):
+
+| model | effort | route |
+|---|---|---|
+| `gpt-5.6-sol` | xhigh | **Codex** |
+| Grok 4.6 | high, **non-fast** | **Cursor** |
+| Opus 5 | high | **a subagent on the user's own Claude Code session** |
+
+**ALL FIVE** adds **GLM 5.3 Flash** (high, z.ai) and **Composer 2.5** (Cursor).
+
+`fast` is the cheap sweep: Composer 2.5 alone, ~2m per slice. It finds nearly as much as the
+others but rates almost everything MEDIUM/LOW, so **its severities are not trustworthy for
+triage order** — say that when reporting a `fast` run, and never let it be the only reviewer
+before a launch.
+
+`3` is an explicit alias for the core three, accepted anywhere `5` is (`/sliced-review 3`,
+`/sliced-review fix 3`). It exists so the model count can be stated out loud rather than implied
+by omission — `fix 3` and `fix` are identical.
+
+The three `fix fast` modes are **pipelined**: a slice's fixes start the moment that slice's review
+lands, instead of waiting for every review to finish. They trade the barrier for wall-clock. See
+11h.
+
+Combinations compose in any order: `fix 3`, `fix 5`, `fix high`, `fix fast 5`, `5 no wrap`,
+`fix fast 3 no wrap`.
+
+### Always finish with `/wrap lite`
+
+**Every mode ends by invoking `/wrap lite`** — unless the invocation contains **`no wrap`**
+(`/sliced-review no wrap`, `/sliced-review fix 5 no wrap`). Run it as the last action, after
+findings are recorded in Step 12 and after any commit in Step 11g.
+
+`no wrap` suppresses ONLY the wrap. Everything else about the mode is unchanged.
+
+---
+
 ## Create a todo per step and work them in order
 
 ---
@@ -35,8 +91,39 @@ Settle three things before touching anything.
 or equivalent exists, read it first — it says what is already known broken, which stops you spending
 a slice rediscovering it.
 
-**The reviewing models — THREE by default.** Claude, Grok and Sol each review independently
-(Step 11). Ask only if the user wants fewer, or names a different set. Any connected backend works — a metered
+**The reviewing models — SET BY THE MODE above**, not chosen here. The default `/sliced-review`
+is the core three; `5` adds the other two; `fast` is Composer alone. The full roster, measured in
+a seven-way head-to-head on a ~20k-line WordPress plugin (2026-08-27). Each reviews independently (Step 11):
+
+| model | effort | route | invocation |
+|---|---|---|---|
+| **gpt-5.6-sol** | xhigh | **Codex** | `codex exec --skip-git-repo-check -m gpt-5.6-sol -c model_reasoning_effort="xhigh" -s read-only -o "$T" … < /dev/null` |
+| **Grok 4.6** | high, non-fast | **Cursor** | `cursor-run.sh --model cursor-grok-4.6-high` |
+| **Opus 5** | high | **the user's own Claude Code session** | `Agent(subagent_type: "general-purpose")`, one per slice |
+| **GLM 5.3 Flash** | high | **z.ai plan** | `glm-run.sh` (flash is the DEFAULT now; `--standard` for glm-5.3) |
+| **Composer 2.5** | default | **Cursor** | `cursor-run.sh --model composer-2.5` |
+
+Never route Sol or Opus through Cursor — see `references/runners.md` → ROUTE PINNING. Grok and
+Composer share ONE Cursor quota pool, so those two never run concurrently; Codex, z.ai and the
+Claude session are separate meters and may.
+
+Why these five, measured on 5 identical slices:
+
+- **GLM 5.3 Flash** replaced glm-5.3 outright: 14 findings vs 13, **4 HIGHs vs 0**, ~1/3 the credit
+  cost, and it caught the one defect a human independently confirmed while glm-5.3 read the same
+  file and reasoned past it.
+- **Composer 2.5** is the value pick: 17 findings — second-most in the set — at **2m00s per slice**,
+  three times faster than Grok. It under-rates severity (one HIGH), so use it for breadth, not for
+  triage order.
+- **Sol xhigh** has the highest signal density: same 14 findings as Grok in **half the words**, and
+  it was the only model to name the exact mechanism behind a defect six others described vaguely.
+- **Grok 4.6 HIGH, not xhigh.** Measured: xhigh returned **half the findings (7 vs 14), zero HIGHs,
+  and took 26% longer**, drifting into prose answers instead of defect lists. One 5-slice run, so
+  not conclusive — but there is no evidence for paying more.
+- **Opus 5 is not independent** on anything Claude built. Its agreement is weaker evidence than
+  Grok's or Sol's. Keep it, weight it accordingly.
+
+Ask only if the user wants fewer, or names a different set. Any connected backend works — a metered
 subscription, a pay-as-you-go API, a local model, or a Claude subagent. See
 [`references/runners.md`](references/runners.md) for the ones already wired on this machine, their
 exact invocation, their known traps, and whether each can report remaining quota. If the user names
@@ -360,12 +447,17 @@ When reports land:
 4. Rank what survives by damage, not by count.
 5. **Report to the user before changing code.** They decide what gets fixed.
 
+**In `fix` modes** the user has already authorised applying what this triage approves, so step 5
+becomes: report the triage, then proceed into 11g without waiting. Report it anyway — the user can
+still stop it — and keep 11g's escalation cases out of the automatic path.
+
 Then fix in waves matching the tiers, and record what was fixed where the project already records
-things (`docs/STATUS.md`, changelog, prodgate evidence).
+things (`docs/STATUS.md`, changelog, prodgate evidence) — **and in `docs/reviews/findings.json`
+(Step 12), which is the one place the board and Mission Control read.**
 
 ---
 
-## Step 11 — Three reviewers, then cross-reviewed fixes
+## Step 11 — Independent reviewers, then cross-reviewed fixes
 
 **The standing rule: nobody reviews their own work — and "nobody" means the MODEL FAMILY, not the
 process.** A Claude subagent reviewing Claude's patch is Claude reviewing Claude. A model that
@@ -381,16 +473,18 @@ behaviour, once marking a real finding "refuted" after answering a narrower ques
 mattered. Every time, an outside reviewer caught it. The failure mode is not a higher error rate. It is
 that a reviewer who wrote the code checks the question the author framed.
 
-### 11a. Review with all three
+### 11a. Review with every model in the mode's set
 
-Run the review slices through **every selected reviewer** — by default Claude, Grok and Sol — same
-prompt, same scope, independently.
+Run the review slices through **every reviewer the mode selects** (see Modes at the top) — same
+prompt, same scope, independently. Default is the core three: Sol xhigh, Grok 4.6 high, Opus 5.
 
-If the user chose FEWER: two reviewers still support cross-review, but there is no third opinion to
-break a tie, so 11e ends at the first genuine disagreement and escalates. One reviewer cannot satisfy
-this step at all — say so plainly rather than pretending a single model's self-check is review. Do not
-let them see each other's findings on this pass — agreement is only evidence when it was reached
-separately.
+Do not let them see each other's findings on this pass — agreement is only evidence when it was
+reached separately.
+
+**`fast` mode is ONE reviewer and therefore is not review.** A single model cannot cross-check
+itself; say that plainly in the report rather than implying the pass was verified, and never let a
+`fast` run stand alone before a launch or handover. Two reviewers support cross-review but have no
+third opinion to break a tie, so 11e escalates at the first genuine disagreement.
 
 Then compare. Three columns per finding: who raised it, what severity, and whether it survived.
 Disagreement is the useful signal; a finding only one model saw is not automatically weaker, and one
@@ -506,6 +600,144 @@ is reviewed HERE. Nothing is finished while that queue is non-empty.
 
 ---
 
+### 11g. `fix` modes — triage, fix, rotate, approve, commit
+
+Only for `fix`, `fix 5` and `fix high`. In the report-only modes, Step 10 ends the work.
+
+**The pipeline:**
+
+1. **Review** — every model in the mode's set runs the slices independently (11a).
+2. **Triage — the SESSION model does this, not a reviewer.** Consolidate all models' findings,
+   drop duplicates, and try to disprove each one by reading the code (11b). Rank what survives by
+   damage. In `fix high`, discard everything below HIGH **here**, before any fixer is briefed —
+   the cheaper severities are still recorded in `findings.json` as `open`, never silently dropped.
+3. **Split by FILE, not by finding** (11c). Two agents editing one file will clobber each other,
+   and one of them will report success.
+4. **Fix** — assign each file group to one model in the set. Every fixer follows 11c's brief
+   rules, including observing the failure before and after the fix.
+5. **Cross-check — rotate so nobody checks their own work.** With the core three, A→B→C→A: B
+   checks A's diff, C checks B's, A checks C's. With five, rotate the same way around the ring.
+   Give the reviewer **the claim, not just the diff** (11d).
+6. **Settled-tree pass** (11f) — full suite on the whole tree, complete diff to whoever authored
+   the least of it.
+7. **Session model reviews, approves and commits.** Record fixes in `findings.json` with
+   `fixed_at` and `fix_commit` (Step 12).
+
+**The rotation is the point.** Nobody reviews their own work, and "nobody" means the model family
+(Step 11 header). Two consequences that are easy to get wrong:
+
+- **Opus 5 is a subagent on the user's own Claude Code session.** A fix Opus wrote must be cross-checked by
+  Sol or Grok — never by another Claude subagent, and never by the session model acting as its
+  reviewer. The session model's approval in step 7 is an **integration gate and a human-facing
+  decision, not an independent review**. Say so rather than presenting it as a third opinion.
+- **GLM Flash and Composer** (in `fix 5`) are independent of all three core models, so they may
+  check any of them.
+
+**What still stops the pipeline.** `fix` is the user's standing authorisation to apply the fixes their
+triage approves — it is NOT authorisation to act on anything. Stop and ask when a fix would delete
+or migrate data, change a public interface, touch credentials or billing, or when the models
+disagree about whether the defect is real. Those go to the user with the disagreement stated
+(11e), and the rest of the queue keeps moving.
+
+**Commit discipline.** One commit at the end of step 7, not one per fixer — the tree is only known
+good after 11f. If the settled-tree pass fails, nothing is committed and the failure is reported.
+
+---
+
+### 11h. `fix fast` modes — pipelined review-and-fix
+
+The `fix` pipeline in 11g is **barriered**: every review finishes, then triage, then fixes. The
+`fix fast` modes remove that barrier — **a slice's fixes start as soon as that slice's review
+lands**, while later slices are still being reviewed. Same rotation rules, same cross-check, same
+single commit; only the scheduling differs.
+
+#### `fix fast` — Composer reviews, everyone else fixes
+
+- **Two Composer 2.5 subagents** work the review queue in parallel, taking the next unclaimed slice.
+- The moment slice 1's review lands, a fixer is dispatched for it. Slice 2's fixer goes out when
+  slice 2 lands, and so on — reviewing and fixing overlap continuously.
+- **Fixer rotation: Sol → Opus 5 → GLM Flash → (Grok 4.6 joins once Composer has finished all
+  slices).** Sol and Opus lead deliberately: Grok is on Cursor and Cursor is already carrying both
+  Composer reviewers, so Grok stays out of the pool until the reviewers release it.
+- After that, rotate through all four.
+
+#### `fix fast 3` / `fix fast 5` — every model reviews AND fixes
+
+The core three (or all five). Each model runs **one reviewer subagent and one fixer subagent at the
+same time**: its reviewer takes the next slice off the queue while its fixer works the findings
+already triaged.
+
+A model MAY fix findings from a slice it reviewed itself — writing a fix is not reviewing it. What
+it may never do is **check its own fix**; the rotated cross-check in 11g step 5 still applies in
+full, and Opus's fixes still route to Sol or Grok, never to another Claude subagent.
+
+#### The two things that break this if you skip them
+
+**1. Overlapping write sets.** In 11g the file split happens once, after all findings are known, so
+disjointness is easy to guarantee. Pipelined, two fixers working different slices can reach for the
+same file — and slices are scoped by file list, not partitioned by it, so the same file legitimately
+appears in more than one slice.
+
+Before dispatching any fixer, compute its write set and compare it against every in-flight fixer.
+On any overlap: **serialize behind the in-flight owner, or give each fixer its own git worktree.**
+Never let two run concurrently in one tree — one will clobber the other and report success.
+
+**2. Cursor concurrency.** Grok and Composer share ONE Cursor quota pool with no remaining-quota
+endpoint, so a failure is the only out-of-quota signal (see `references/runners.md`). These modes
+deliberately break the "never two Cursor arms at once" rule:
+
+| mode | concurrent Cursor calls |
+|---|---|
+| `fix fast` | 2 (both Composer reviewers) — Grok held back until they finish |
+| `fix fast 3` | 2 (Grok reviewer + Grok fixer) |
+| `fix fast 5` | up to 4 (Grok ×2 + Composer ×2) |
+
+This is a deliberate trade of quota risk for wall-clock. Say so when reporting, and **watch
+for the pool draining**: a Cursor agent that starts failing mid-run is the out-of-quota signal, not
+a bug to debug. If Cursor starts failing, drop to one Cursor consumer and carry on with the rest —
+do not stall the whole pipeline on it.
+
+#### What does NOT change
+
+Triage still happens before a fixer is briefed — per slice now rather than once, but the session
+model still tries to disprove each finding first (11b). `fix fast high` filters below-HIGH the same
+way. The settled-tree pass (11f) still runs on the whole tree at the end, and there is still exactly
+**one commit**, after it passes. Destructive, interface-changing, credential/billing and disputed
+fixes still stop and ask.
+
+---
+
+## Step 12 — Record the findings where the dashboards read them
+
+A review that lives only in `out/*.md` is invisible a week later. Every review ends by writing
+**`docs/reviews/findings.json`** in the project root — the machine-readable record that
+a readiness dashboard can collect and render as "what is next on this project" (the author's
+is `prodgate`; substitute your own tracker, or keep the file as the record on its own). Copy `templates/findings.json` if the file does not exist.
+
+The shape is in `templates/findings.json`. The rules that matter:
+
+1. **One `reviews[]` record per run**: `id` = `<short-model>-<YYYY-MM-DD>`, `model` = the real
+   model id from `runner.env` (`gpt-5.6-sol`, `grok-4.5`, `glm-5.3`, …), `kind: "sliced-review"`,
+   `dir` = this review's folder, `slices` = number of slice outputs.
+2. **One `findings[]` entry per DISTINCT defect** that survived Step 10. The same defect from two
+   models is one entry (say "also found by …" in `note`). Skip style nits with no file. Fill
+   `file` as `path:LINE` whenever the report names one. `severity`: critical | high | medium |
+   low | info. `found_at` = the review date.
+3. **`verified: true` only for what a human or an executed test confirmed.** A model's claim is
+   `false` until then. The dashboards show the two counts apart, so lying here shows.
+4. **Status follows the work**: `open` until a commit closes it; `fixed` needs `fixed_at` and
+   `fix_commit`; `wontfix` / `false-positive` need a `note` saying why. **Never delete an entry.**
+5. **Never put a finding in `.prodgate.yml`.** If a finding is an instance of a tip, set `tip`
+   (`r39`, `owasp-a01`, …) and `tier`; the tip's own entry is where the gate decision lives.
+6. Validate before committing: the file must be valid JSON and every `findings[]` entry must
+   carry `id`, `severity`, `status`, `found_at`. Commit it with the review's other docs, then
+   refresh whatever dashboard reads it.
+
+`/wrap` re-reads the entries a session touched, the same way it re-reads `.prodgate.yml`; a
+session that fixes a finding and leaves the file alone leaves the board reporting an open bug.
+
+---
+
 ## Honesty rules
 
 - Never present the slice-count or cost estimate as measured until slice one has run.
@@ -519,3 +751,5 @@ is reviewed HERE. Nothing is finished while that queue is non-empty.
   agreement was independent or after exchange.
 - Never present a conclusion as consensus when the adversarial rounds ended without one. Report the
   disagreement and hand the decision to the user.
+- Never mark a finding `verified: true` or `fixed` in `findings.json` on a model's say-so. Verified
+  means a person or a test saw it; fixed means a commit sha.

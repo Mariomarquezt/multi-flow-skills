@@ -1,5 +1,7 @@
 # sliced-review
 
+**Version 2.0.1** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
+
 A Claude Code skill that reviews a whole codebase with a second model **without the budget being spent on the model wandering around the repository**.
 
 It splits the codebase into scoped slices with explicit file lists, orders them into tiers by blast radius, and drives them one at a time with a cost ledger, an activity-aware watchdog, and an optional quota guard. Works with any headless backend — a metered subscription, a pay-as-you-go API, a local model, or a Claude subagent.
@@ -12,13 +14,15 @@ Read [`FIELD-NOTES.md`](FIELD-NOTES.md) first — it is the measured evidence be
 
 | Path | What it is |
 |---|---|
-| [`SKILL.md`](SKILL.md) | The skill itself — 11 steps from measuring the codebase to cross-reviewed fixes |
+| [`SKILL.md`](SKILL.md) | The skill itself — invocation modes, then 12 steps from measuring the codebase to recording the findings |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
 | [`FIELD-NOTES.md`](FIELD-NOTES.md) | Measured results from real runs. Why each rule exists |
 | [`references/runners.md`](references/runners.md) | How to wire a review backend: the four questions, plus worked examples |
 | [`references/templates/_context.md`](references/templates/_context.md) | Shared context every slice prompt starts with |
 | [`references/templates/run-slice.sh`](references/templates/run-slice.sh) | Runs ONE slice: quota guard, idle + hard-cap watchdog, process-group kill, ledger line |
 | [`references/templates/chain.sh`](references/templates/chain.sh) | Works the queue unattended; retries on 429, never records a quota error as a report |
 | [`references/templates/ORDER.md`](references/templates/ORDER.md) | Tier-order template: what is still covered if the budget dies after tier 2 |
+| [`templates/findings.json`](templates/findings.json) | Shape of the `docs/reviews/findings.json` record every review ends by writing (Step 12) |
 
 ## Install
 
@@ -27,6 +31,18 @@ git clone https://github.com/Mariomarquezt/sliced-review ~/.claude/skills/sliced
 ```
 
 Then in Claude Code: "review the whole codebase with GLM" / "audit this project with a second model" / `/sliced-review`.
+
+## Modes
+
+| invocation | reviewers | applies fixes? |
+|---|---|---|
+| `/sliced-review` or `/sliced-review 3` | core three: GPT-5.6 Sol (xhigh), Grok 4.6 (high), Opus 5 (high) | no |
+| `/sliced-review 5` | core three + GLM 5.3 Flash + Composer 2.5 | no |
+| `/sliced-review fast` | Composer 2.5 alone | no |
+| `/sliced-review fix` / `fix 3` / `fix 5` / `fix high` | as above | yes — triage, fix, cross-check with a different model, commit |
+| `/sliced-review fix fast` / `fix fast 3` / `fix fast 5` | as above | yes, pipelined per slice |
+
+Append `no wrap` to skip the closing wrap-up. The models are the author's measured stack; swap in whatever your `runner.env` can reach.
 
 ## Wiring your own backend
 
