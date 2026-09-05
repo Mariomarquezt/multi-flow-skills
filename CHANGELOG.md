@@ -3,6 +3,16 @@
 The version lives in `SKILL.md` frontmatter (`version:`) and as a git tag. Compare yours with
 `grep ^version ~/.claude/skills/sliced-review/SKILL.md` to see if you are behind.
 
+## 2.2.0 — 2026-09-04
+
+- **Review report, Markdown + HTML.** `templates/build-report.py` (stdlib only) renders
+  `docs/reviews/report-<date>.md` and a self-contained `report-<date>.html` from `findings.json`,
+  the scorecard and each lane's `ledger.tsv`: counts, the ranked scorecard, a lanes table
+  (total time, avg per slice, slowest slice, slice status per model) and every finding grouped by
+  severity with file, status, finder and verified flag.
+- **`report` suffix** (`/sliced-review 5 report`, `fix fast 3 report no wrap`) builds it without
+  asking. Without the suffix the skill asks once at the end of Step 12 (new §12b).
+
 ## 2.1.1 — 2026-09-04
 
 - Scorecard: time is explicit per model — total time, average per slice, slowest slice (with its

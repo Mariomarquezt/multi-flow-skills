@@ -1,7 +1,7 @@
 ---
 name: sliced-review
-version: 2.1.1
-description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`. Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
+version: 2.2.0
+description: Run a full code review of an existing project through another model by splitting the codebase into scoped slices with explicit file lists, ordered into tiers by blast radius, and driving them one at a time with a cost ledger and an optional quota guard. Works with any connected backend (GLM, Kimi, Command Code models, Codex, Claude subagents, or a custom command) and any project size or language — it scales from a three-slice pass on a small repo to a forty-slice queue that runs unattended overnight. Use when the user asks to "review the whole codebase with <model>", "audit this project with a second model", "get a second opinion on this code", "the review keeps running out of credits", "split the review into slices/tiers", or "do the same review we did for <other project>". MODES: bare `/sliced-review` runs the core three models (Sol xhigh, Grok 4.6 high, Opus 5); `3` is an explicit alias for that default; `5` runs all five (adds GLM 5.3 Flash and Composer 2.5); `fast` runs Composer 2.5 alone; `fix` / `fix 3` / `fix 5` / `fix high` also triage, apply the fixes with those models, cross-check each fix with a DIFFERENT model, and commit; `fix fast` / `fix fast 3` / `fix fast 5` do the same but PIPELINED, starting each slice's fixes as soon as that slice's review lands; append `no wrap` to skip the closing `/wrap lite`; append `report` to build the Markdown + HTML review report without being asked (otherwise the skill asks once at the end). Also use when a whole-repo review prompt has already died on a 429 and returned nothing, or before a launch or handover on anything high-stakes. Every multi-model run ends with a per-model scorecard (verified findings by severity, precision, unique finds, rank). NOT for reviewing a plan before code exists (use /grill-me-codex or /codex-review). NOT for reviewing a single diff, branch or PR (use /code-review).
 ---
 
 # Sliced Review
@@ -42,6 +42,7 @@ before Step 1, so a misparse is caught before any budget is spent.
 | `/sliced-review fix fast` | **2× Composer review**, others fix | yes — **pipelined, fix starts per slice** |
 | `/sliced-review fix fast 3` | core three, review **and** fix concurrently | yes — pipelined |
 | `/sliced-review fix fast 5` | all five, review **and** fix concurrently | yes — pipelined |
+| `… report` (suffix) | any of the above | — and builds the Markdown + HTML report (12b) without asking |
 
 **The CORE THREE** (the default — the independent, highest-signal set):
 
@@ -67,7 +68,10 @@ lands, instead of waiting for every review to finish. They trade the barrier for
 11h.
 
 Combinations compose in any order: `fix 3`, `fix 5`, `fix high`, `fix fast 5`, `5 no wrap`,
-`fix fast 3 no wrap`.
+`fix fast 3 no wrap`, `5 report`, `fix fast 3 report no wrap`.
+
+`report` is a suffix like `no wrap`: it pre-answers the question Step 12b would otherwise ask, so
+the Markdown + HTML report is built at the end without a prompt.
 
 ### Always finish with `/wrap lite`
 
@@ -776,6 +780,35 @@ The shape is in `templates/findings.json`. The rules that matter:
 
 `/wrap` re-reads the entries a session touched, the same way it re-reads `.prodgate.yml`; a
 session that fixes a finding and leaves the file alone leaves the board reporting an open bug.
+
+### 12b. The report — `report` suffix, or ask
+
+`findings.json` is for machines and the scorecard is one table. When a person needs to READ the
+review — the user a week later, a client, a teammate who was not in the session — build the report:
+
+```bash
+python3 <skill dir>/templates/build-report.py --project <project root>
+```
+
+It writes **`docs/reviews/report-<date>.md`** and **`docs/reviews/report-<date>.html`** from the
+same three records — `findings.json`, `scorecard-<date>.md`, and each lane's `ledger.tsv` — so the
+two never drift. The HTML is one self-contained file (no scripts, no external assets, prints
+cleanly, light and dark) that opens anywhere. Both carry: the counts, the scorecard with its ranking
+prose, a lanes table with total time / avg per slice / slowest slice / slice status per model, and
+every finding grouped by severity with file, status, who found it, verified or not.
+
+**When it runs:**
+
+- If the invocation carried the **`report`** suffix (`/sliced-review 5 report`,
+  `/sliced-review fix fast 3 report`), build it here without asking, and open the HTML for the user.
+- Otherwise, **ask once**, after `findings.json` is written and before `/wrap lite`: *"Build the
+  Markdown + HTML report? (y/n)"*. Do not build it unasked — it is a deliverable, and an unwanted
+  file in `docs/reviews/` is noise the next reader has to explain.
+
+The generator decides nothing. It renders what triage recorded: a wrong severity or a missing
+`verified` in `findings.json` shows up wrong in the report, and the fix is the JSON, never the
+HTML. Commit the two report files with the review's other docs. Re-run after fixes land so the
+status column matches the commits.
 
 ---
 

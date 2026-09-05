@@ -1,6 +1,6 @@
 # sliced-review
 
-**Version 2.1.1** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
+**Version 2.2.0** — see [`CHANGELOG.md`](CHANGELOG.md). Your installed version is the `version:` line in `SKILL.md`.
 
 A Claude Code skill that reviews a whole codebase with a second model **without the budget being spent on the model wandering around the repository**.
 
@@ -23,6 +23,7 @@ Read [`FIELD-NOTES.md`](FIELD-NOTES.md) first — it is the measured evidence be
 | [`references/templates/chain.sh`](references/templates/chain.sh) | Works the queue unattended; retries on 429, never records a quota error as a report |
 | [`references/templates/ORDER.md`](references/templates/ORDER.md) | Tier-order template: what is still covered if the budget dies after tier 2 |
 | [`templates/findings.json`](templates/findings.json) | Shape of the `docs/reviews/findings.json` record every review ends by writing (Step 12) |
+| [`templates/build-report.py`](templates/build-report.py) | Renders the Markdown + self-contained HTML review report from `findings.json`, the scorecard and the ledgers (Step 12b; `report` suffix or asked once) |
 | [`templates/scorecard.md`](templates/scorecard.md) | Per-model scorecard every multi-model run ends Step 10 with: verified findings by severity, precision, unique finds, rank |
 
 ## Install
@@ -43,7 +44,7 @@ Then in Claude Code: "review the whole codebase with GLM" / "audit this project 
 | `/sliced-review fix` / `fix 3` / `fix 5` / `fix high` | as above | yes — triage, fix, cross-check with a different model, commit |
 | `/sliced-review fix fast` / `fix fast 3` / `fix fast 5` | as above | yes, pipelined per slice |
 
-Append `no wrap` to skip the closing wrap-up. The models are the author's measured stack; swap in whatever your `runner.env` can reach.
+Append `no wrap` to skip the closing wrap-up. Append `report` to build the Markdown + HTML review report without being asked; otherwise the skill asks once at the end. The models are the author's measured stack; swap in whatever your `runner.env` can reach.
 
 ## Wiring your own backend
 
