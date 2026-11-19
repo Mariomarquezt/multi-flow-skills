@@ -1,0 +1,20 @@
+# lanes.tsv — one line per lane: <lane>TAB<provider>TAB<model id>TAB<command>. Lines starting with # are ignored.
+# {P} = prompt file, {T} = temp path, {APP} = app name. The command prints the report on stdout.
+# Provider = the codexbar key from models.md (pick it with pick-provider.py). Cursor lanes: wrap in hb.sh.
+sol	codex	gpt-6.2-sol	codex exec --skip-git-repo-check -s read-only -o {T}.out -m gpt-6.2-sol -c model_reasoning_effort="high" "$(cat {P})" < /dev/null > {T}.tr 2>&1; cat {T}.out
+astra	codex	gpt-6.2-astra	codex exec --skip-git-repo-check -s read-only -o {T}.out -m gpt-6.2-astra -c model_reasoning_effort="high" "$(cat {P})" < /dev/null > {T}.tr 2>&1; cat {T}.out
+opus	claude	claude-opus-5-5	claude -p --strict-mcp-config --tools Read,Grep,Glob --output-format json --effort high --model claude-opus-5-5 "$(cat {P})" > {T}.json; python3 ~/.claude/skills/sliced-review/references/templates/claude_extract.py {T}.json
+grok-cur	cursor	cursor-grok-4.6-high	bash ~/.claude/skills/sliced-review/references/templates/hb.sh $RUNNERS_DIR/cursor/cursor-run.sh --model cursor-grok-4.6-high "$(cat {P})" < /dev/null
+grok-xai	xai	grok-4.6	$RUNNERS_DIR/xai/xai-run.sh --grok46 "$(cat {P})" < /dev/null
+deepseek-oc	opencodego	deepseek-v4.1-flash	$RUNNERS_DIR/pi/pi-run.sh --deepseek "$(cat {P})" < /dev/null
+deepseek-cline	cline	deepseek-v4.1-flash	$RUNNERS_DIR/cline/cline-run.sh --thinking high --deepseek "$(cat {P})" < /dev/null
+glmflash-oc	opencodego	glm-5.3-flash	$RUNNERS_DIR/pi/pi-run.sh --glm "$(cat {P})" < /dev/null
+glmflash-cline	cline	glm-5.3-flash	$RUNNERS_DIR/cline/cline-run.sh --thinking high --glm-flash "$(cat {P})" < /dev/null
+mimo-oc	opencodego	mimo-v2.6-flash	$RUNNERS_DIR/pi/pi-run.sh --mimo-flash "$(cat {P})" < /dev/null
+mimo-cmd	cmd	mimo-v2.6-flash	$RUNNERS_DIR/cmd/cmd-run.sh --model xiaomi/mimo-v2.6-flash "$(cat {P})" < /dev/null
+mimo-cline	cline	mimo-v2.6-flash	$RUNNERS_DIR/cline/cline-run.sh --thinking high --mimo-flash "$(cat {P})" < /dev/null
+qwenflash-oc	opencodego	qwen3.8-flash	$RUNNERS_DIR/pi/pi-run.sh --qwen-flash "$(cat {P})" < /dev/null
+qwenflash-cmd	cmd	qwen3.8-flash	$RUNNERS_DIR/cmd/cmd-run.sh --model qwen/qwen3.8-flash "$(cat {P})" < /dev/null
+mmflash-oc	opencodego	minimax-m3.1-flash	$RUNNERS_DIR/opencode/oc-run.sh --model opencode-go/minimax-m3.1-flash "$(cat {P})" < /dev/null
+crouton	orfree	stealth/crouton-alpha	~/work/sr-kits/crouton-route.sh "$(cat {P})" < /dev/null
+pulse	ocpulse	pulse-alpha-free	$RUNNERS_DIR/opencode/oc-run.sh --model opencode/pulse-alpha-free "$(cat {P})" < /dev/null

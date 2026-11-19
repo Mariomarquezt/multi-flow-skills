@@ -3,6 +3,10 @@
 The version lives in `SKILL.md` frontmatter (`version:`) and as a git tag. Compare yours with
 `grep ^version ~/.claude/skills/sliced-review/SKILL.md` to see if you are behind.
 
+## Repo move — 2026-11-19
+
+This skill now lives in the `multi-flow-skills` bundle (renamed from `sliced-review`; the old URL forwards). Models moved to `skills/_shared/models.md`; Sol is GPT-6.2 Sol and Astra 6.2 is an extra lane. The version in `SKILL.md` is the current one.
+
 ## 2.3.1 — 2026-09-04
 
 - Fixed five-model cross-check ring: Sol → Opus → Grok → GLM Flash → Composer → Sol. Grok and

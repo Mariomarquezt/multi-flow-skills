@@ -54,8 +54,10 @@ def parse_pipe_table(md):
 
 
 def parse_ledger(path):
-    """ledger.tsv: date \t slice \t before->after \t N bytes \t MmSSs \t STATUS \t COST"""
-    out = {"slices": 0, "seconds": 0, "slowest": (0, ""), "status": Counter(), "cost": []}
+    """ledger.tsv: date \t slice \t before->after \t N bytes \t MmSSs \t STATUS \t COST \t TOKENS \t API_USD
+    (TOKENS = `in=.. cached=.. cache_write=.. out=..` and API_USD added 2026-10-15; older ledgers lack them)"""
+    out = {"slices": 0, "seconds": 0, "slowest": (0, ""), "status": Counter(), "cost": [],
+           "tokens": Counter(), "tok_runs": 0, "api_usd": 0.0, "api_runs": 0}
     if not path or not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as f:
@@ -72,7 +74,30 @@ def parse_ledger(path):
             out["status"][parts[5]] += 1
             if len(parts) > 6 and parts[6]:
                 out["cost"].append(parts[6])
+            if len(parts) > 7 and "out=" in parts[7]:
+                out["tok_runs"] += 1
+                for k, v in re.findall(r"(in|cached|cache_write|out)=(\d+)", parts[7]):
+                    out["tokens"][k] += int(v)
+            if len(parts) > 8:
+                try:
+                    out["api_usd"] += float(parts[8]); out["api_runs"] += 1
+                except ValueError:
+                    pass
     return out
+
+
+def fmt_tokens(led):
+    t = led["tokens"]
+    if not led["tok_runs"]:
+        return "not recorded"
+    k = lambda n: f"{n/1e6:.1f}M" if n >= 1e6 else f"{n/1e3:.0f}k"
+    return f"in {k(t['in'])} · cached {k(t['cached'])} · out {k(t['out'])} ({led['tok_runs']}/{led['slices']} runs)"
+
+
+def fmt_usd(led):
+    if not led["api_runs"]:
+        return "unknown"
+    return f"${led['api_usd']:.2f}" + ("" if led["api_runs"] == led["tok_runs"] else f" ({led['api_runs']} priced)")
 
 
 def fmt_secs(s):
@@ -168,10 +193,11 @@ def render_md(m, date):
             avg = led["seconds"] / led["slices"] if led["slices"] else 0
             st = ", ".join(f"{v} {k}" for k, v in led["status"].most_common())
             lrows.append([r.get("model", "?"), r.get("id", ""), led["slices"], fmt_secs(led["seconds"]), fmt_secs(avg),
-                          f"{fmt_secs(led['slowest'][0])} ({led['slowest'][1]})", st, len(ln["findings"]), ln["verified"], ln["score"]])
+                          f"{fmt_secs(led['slowest'][0])} ({led['slowest'][1]})", st, fmt_tokens(led), fmt_usd(led),
+                          len(ln["findings"]), ln["verified"], ln["score"]])
         else:
-            lrows.append([r.get("model", "?"), r.get("id", ""), r.get("slices", "?"), "no ledger", "", "", "", len(ln["findings"]), ln["verified"], ln["score"]])
-    L.append(md_table(["model", "review id", "slices", "total time", "avg / slice", "slowest slice", "slice status", "reported", "verified", "score"], lrows))
+            lrows.append([r.get("model", "?"), r.get("id", ""), r.get("slices", "?"), "no ledger", "", "", "", "", "", len(ln["findings"]), ln["verified"], ln["score"]])
+    L.append(md_table(["model", "review id", "slices", "total time", "avg / slice", "slowest slice", "slice status", "tokens", "api_usd", "reported", "verified", "score"], lrows))
 
     for sev in SEV_ORDER:
         fs = m["by_sev"].get(sev, [])
@@ -261,10 +287,11 @@ def render_html(m, date):
             avg = led["seconds"] / led["slices"] if led["slices"] else 0
             st = ", ".join(f"{v} {k}" for k, v in led["status"].most_common())
             lrows.append([r.get("model", "?"), r.get("id", ""), led["slices"], fmt_secs(led["seconds"]), fmt_secs(avg),
-                          f"{fmt_secs(led['slowest'][0])} ({led['slowest'][1]})", st, len(ln["findings"]), ln["verified"], ln["score"]])
+                          f"{fmt_secs(led['slowest'][0])} ({led['slowest'][1]})", st, fmt_tokens(led), fmt_usd(led),
+                          len(ln["findings"]), ln["verified"], ln["score"]])
         else:
-            lrows.append([r.get("model", "?"), r.get("id", ""), r.get("slices", "?"), "no ledger", "", "", "", len(ln["findings"]), ln["verified"], ln["score"]])
-    lanes = html_table(["model", "review id", "slices", "total time", "avg / slice", "slowest slice", "slice status", "reported", "verified", "score"], lrows)
+            lrows.append([r.get("model", "?"), r.get("id", ""), r.get("slices", "?"), "no ledger", "", "", "", "", "", len(ln["findings"]), ln["verified"], ln["score"]])
+    lanes = html_table(["model", "review id", "slices", "total time", "avg / slice", "slowest slice", "slice status", "tokens", "api_usd", "reported", "verified", "score"], lrows)
 
     sections = []
     for sev in SEV_ORDER:

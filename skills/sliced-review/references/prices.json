@@ -1,0 +1,70 @@
+{
+  "_about": "USD per 1M tokens. Read by usage.py `price`. Lookup order: this file -> the runner's own table ($RUNNERS_DIR/devin/prices.json, $RUNNERS_DIR/scripts/claude-prices.json) -> OpenRouter public list (cached 24h). Missing cache_read = 0.1 x input, missing cache_write = 1.25 x input. A free route is priced as its paid twin: the point is the API-equivalent cost.",
+  "_source": "the user 2026-10-15 (Claude 5.5 family, Opus 5, Fable 5.1).",
+  "models": {
+    "claude-haiku-5-5": {
+      "in": 0.1,
+      "out": 0.5
+    },
+    "claude-sonnet-5-5": {
+      "in": 2.0,
+      "out": 10.0
+    },
+    "claude-opus-5-5": {
+      "in": 4.0,
+      "out": 20.0
+    },
+    "claude-opus-5": {
+      "in": 5.0,
+      "out": 25.0
+    },
+    "claude-fable-5-1": {
+      "in": 10.0,
+      "out": 50.0
+    },
+    "grok-4.7": {
+      "in": 2.0,
+      "out": 6.0,
+      "cache_read": 0.5,
+      "from": "openrouter:x-ai/grok-4.7",
+      "saved": "2026-10-25"
+    },
+    "gpt-6.1-sol": {
+      "in": 2.0,
+      "out": 10.0,
+      "cache_read": 0.1,
+      "cache_write": 2.5,
+      "from": "openrouter:openai/gpt-6.1-sol",
+      "saved": "2026-10-25"
+    },
+    "grok-4.6": {
+      "in": 2.0,
+      "out": 6.0,
+      "cache_read": 0.5,
+      "from": "openrouter:x-ai/grok-4.6",
+      "saved": "2026-10-25"
+    },
+    "mimo-v2.6-flash": {
+      "in": 0.14,
+      "out": 0.28,
+      "cache_read": 0.0028,
+      "from": "openrouter:xiaomi/mimo-v2.6-flash",
+      "saved": "2026-10-31"
+    },
+    "deepseek-v4-pro": {
+      "in": 1.6,
+      "out": 3.2,
+      "cache_read": 0.135,
+      "from": "openrouter:deepseek/deepseek-v4-pro",
+      "saved": "2026-10-31"
+    }
+  },
+  "_aliases_about": "Ids that do not match an OpenRouter id by name. Key = id as the runner prints it (provider prefix, effort suffix and -free are stripped first; dots and dashes are treated alike). 'id@provider' applies only to that provider (Cesego labels DeepSeek V4.1 Flash as deepseek-v4-flash). Value = the id to price it as.",
+  "aliases": {
+    "deepseek-v4-flash-max": "deepseek-v4.1-flash",
+    "deepseek-v4-flash@cesego": "deepseek-v4.1-flash",
+    "glm5.3-flash-max": "glm-5.3-flash",
+    "glm5.3-flash": "glm-5.3-flash",
+    "qwen3.8-flash-max": "qwen3.8-flash"
+  }
+}

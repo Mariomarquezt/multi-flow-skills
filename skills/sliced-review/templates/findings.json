@@ -5,7 +5,7 @@
   "reviews": [
     {
       "id": "sol-2026-01-01",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6.2-sol",
       "date": "2026-01-01",
       "kind": "sliced-review",
       "dir": "docs/sol-review",

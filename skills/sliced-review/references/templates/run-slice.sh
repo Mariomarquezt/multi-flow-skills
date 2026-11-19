@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run ONE review slice, with an optional quota guard and a cost ledger.
+# Run ONE review slice, with an optional quota guard, a cost ledger and a token ledger.
 # Usage: run-slice.sh <slice-name>
 #
 # NEVER run two of these at the same time. Parallel whole-repo lanes are what emptied a
@@ -118,6 +118,34 @@ COST=""
 # those, set COST_BEFORE_CMD as well: the delta between the two readings is the slice's real cost.
 [ -n "$COST_BEFORE" ] && COST="${COST_BEFORE} -> ${COST}"
 
+# TOKENS + API-EQUIVALENT COST — recorded for EVERY run, flat plan or free model included.
+# usage.py reads the backend's own record (claude/cline/devin stderr line, opencode.db, ~/.codex/sessions,
+# $RUNNERS_DIR/cursor/usage.jsonl, ~/.commandcode/projects) and prices it: prices.json -> the runner's own
+# table -> OpenRouter's public price list. `unknown` when no price is found; never an invented one.
+# USAGE_PROVIDER / USAGE_MODEL in runner.env; when unset they are guessed from RUNNER_CMD.
+USAGE_PY="${USAGE_PY:-$HOME/.claude/skills/sliced-review/references/templates/usage.py}"
+UP="${USAGE_PROVIDER:-}"
+if [ -z "$UP" ]; then
+  case "$RUNNER_CMD" in
+    *codex\ exec*) UP=codex ;; *claude\ -p*) UP=claude ;; *cesego-run*) UP=cesego ;; *xai-run*) UP=xai ;;
+    *oc-run*|*opencode\ run*|*mimo-run*|*nexum-run*) UP=oc ;; *cursor-run*|*cursor-agent*) UP=cursor ;;
+    *devin-run*) UP=devin ;; *cline-run*) UP=cline ;; *cmd-run*|*/cmd\ *) UP=cmd ;;
+  esac
+fi
+UM="${USAGE_MODEL:-$(grep -oE -- '(--model|-m) [^ ]+' <<<"$RUNNER_CMD" | head -1 | cut -d' ' -f2 | tr -d '"'"'"'"')}"
+TOKENS="unknown"; API_USD="unknown"
+if [ -n "$UP" ] && [ -f "$USAGE_PY" ]; then
+  CAP=$(python3 "$USAGE_PY" capture --provider "$UP" --model "${UM:-unknown}" --cwd "$REPO" \
+        --start "$STARTED" --end "$(date +%s)" --err "$OUT" 2>/dev/null | tail -1)
+  case "$CAP" in
+    "tokens: in="*) TOKENS=$(sed -E 's/^tokens: (in=[0-9]+ cached=[0-9]+ cache_write=[0-9]+ out=[0-9]+).*/\1/' <<<"$CAP")
+                    API_USD=$(grep -oE 'api_usd=[^ ]+' <<<"$CAP" | cut -d= -f2) ;;
+    *) TOKENS="none($(grep -oE 'source=[^=]*' <<<"$CAP" | sed 's/source=//; s/ api_usd$//'))" ;;
+  esac
+else
+  TOKENS="none(set USAGE_PROVIDER in runner.env)"
+fi
+
 # A quota error is a DISCARDED run, never a completed one.
 STATUS=OK
 grep -qEi '\(429\)|usage limit|quota exceeded|rate.?limit(ed)? exceeded|insufficient (credit|quota)' "$OUT" && STATUS=QUOTA_429
@@ -131,13 +159,15 @@ if [ -s "$KILLED_MARK" ]; then
 fi
 rm -f "$KILLED_MARK"
 
-printf '%s\t%s\t%s->%s\t%s bytes\t%dm%02ds\t%s\t%s\n' \
+# Columns: date, slice, quota before->after, bytes, time, status, cost, tokens, api_usd (last two added 2026-10-15).
+printf '%s\t%s\t%s->%s\t%s bytes\t%dm%02ds\t%s\t%s\t%s\t%s\n' \
   "$(date '+%Y-%m-%d %H:%M')" "$SLICE" "$BEFORE" "$AFTER" "$BYTES" \
-  "$((ELAPSED/60))" "$((ELAPSED%60))" "$STATUS" "$COST" \
+  "$((ELAPSED/60))" "$((ELAPSED%60))" "$STATUS" "$COST" "$TOKENS" "$API_USD" \
   >> "$R/ledger.tsv"
 
 echo "[$(date '+%H:%M:%S')] $SLICE -> $STATUS"
 echo "  quota after — ${AFTER}${AFTER:+%} used"
 echo "  output: $OUT ($BYTES bytes, $((ELAPSED/60))m$((ELAPSED%60))s)"
 [ -n "$COST" ] && echo "  cost: $COST"
+echo "  tokens: $TOKENS  api_usd: $API_USD"
 [ "$STATUS" = OK ] || exit 3
